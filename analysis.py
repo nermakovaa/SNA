@@ -100,7 +100,7 @@ class Telegram:
         return top_regions
     
 
-class Telegram:
+class Vkontakte:
     def __init__(self, data):
         self.data = data
     
