@@ -1,5 +1,10 @@
-import json
 from transformers import pipeline
+from collections import Counter
+from datetime import datetime
+import networkx as nx
+import matplotlib.pyplot as plt
+import json
+import emoji
 
 
 class Telegram:
@@ -99,6 +104,112 @@ class Telegram:
         top_regions = json.dumps(sorted_city_stats, indent=4, ensure_ascii=False)
         return top_regions
     
+    def net_promoter_score(self):
+        """
+        Лояльность пользователей (Net Promoter Score)
+        ((Положительные комментарии - Негативные комментарии) / Всего комментариев) * 100%
+        """
+        classifier = pipeline("sentiment-analysis", model="blanchefort/rubert-base-cased-sentiment") 
+
+        for i in self.data:
+            for item in i['tg']:
+                total_messages = [post['text'] for post in item['posts'] for post in post['replies'] if post['text'] is not None]
+                print(total_messages)
+                len_total_messages = len(total_messages)
+                
+                classified_messages = classifier(total_messages)
+                positive_count = sum(1 for i in classified_messages if i['label'] == 'POSITIVE')
+                negative_count = sum(1 for i in classified_messages if i['label'] == 'NEGATIVE')
+
+        if len_total_messages > 0:
+            net_promoter_score = ((positive_count - negative_count) / len_total_messages) * 100
+            return net_promoter_score
+        else:
+            return 0
+        
+    def character_length(self):
+        '''
+        Распределение тональности комментариев по длине символов
+        [количество символов | тональность]
+        '''
+        lists = []
+        results = []
+        
+        # https://huggingface.co/blanchefort/rubert-base-cased-sentiment модель для анализа тональности
+        classifier = pipeline("sentiment-analysis", model="blanchefort/rubert-base-cased-sentiment") 
+        
+        # диапазоны длин символов
+        dict_lengths = {1: '0-10', 2: '11-50', 3: '51-100', 4: '101-200', 5: '201+'}
+
+        comments_lengths = {
+            dict_lengths[1]: [],
+            dict_lengths[2]: [],
+            dict_lengths[3]: [],
+            dict_lengths[4]: [],
+            dict_lengths[5]: [] 
+        }
+
+        for group in self.data:
+            for post in group['tg'][0]['posts']:
+                for reply in post['replies']:
+                    if reply['text'] != None:
+                        comment_length = len(reply['text'])
+                        if comment_length < int(dict_lengths[1].split('-')[1])+1:
+                            comments_lengths[dict_lengths[1]].append(reply['text'])
+                        elif int(dict_lengths[1].split('-')[1])+1 <= comment_length <= int(dict_lengths[2].split('-')[1])+1:
+                            comments_lengths[dict_lengths[2]].append(reply['text'])
+                        elif int(dict_lengths[2].split('-')[1])+1 <= comment_length <= int(dict_lengths[3].split('-')[1])+1:
+                            comments_lengths[dict_lengths[3]].append(reply['text'])
+                        elif int(dict_lengths[3].split('-')[1])+1 <= comment_length <= int(dict_lengths[4].split('-')[1])+1:
+                            comments_lengths[dict_lengths[4]].append(reply['text'])
+                        else:
+                            comments_lengths[dict_lengths[5]].append(reply['text'])
+
+        for lengths in comments_lengths.keys():
+            lists.append([classifier(_) for _ in comments_lengths[lengths]])
+            
+        length_keys = dict_lengths.values()
+
+        for list in lists:
+            total_score = sum(dict['score'] for sublist in list for dict in sublist)
+
+            distribution = {'positive': 0, 'negative': 0, 'neutral': 0} 
+            if total_score != 0:
+                for sublist in list:
+                    for dict in sublist:
+                        distribution[dict['label'].lower()] += (dict['score'] / total_score) * 100
+
+            results.append(distribution)
+
+        comments_lengths_sentimentary = {}
+        for i, dist in zip(length_keys, results):
+            comments_lengths_sentimentary[i] = dist
+
+        return comments_lengths_sentimentary  
+    
+    def top_emoji(self):
+        '''
+        Топ-5 эмодзи
+        [эмодзи | количество упоминаний эмодзи]
+        '''
+        reactions_summary = {}
+        
+        for group in self.data:
+            posts = (post_item for item in group['tg'] for post_item in item['posts'])
+            
+            for post_item in posts:
+                reactions = post_item.get('reactions', {})
+                
+                if reactions is not None:
+                    for reaction in filter(lambda r: r['emoji'] is not None, reactions):
+                        emoji = reaction['emoji']
+                        count = reaction['count']
+                        
+                        reactions_summary[emoji] = reactions_summary.get(emoji, 0) + count
+
+        top_reactions = dict(sorted(reactions_summary.items(), key=lambda x: x[1], reverse=True)[:5])
+        return top_reactions  
+    
 
 class Vkontakte:
     def __init__(self, data):
@@ -197,3 +308,159 @@ class Vkontakte:
 
         top_regions = json.dumps(sorted_city_stats, indent=4, ensure_ascii=False)
         return top_regions
+    
+    def net_promoter_score(self):
+        """
+        Лояльность пользователей (Net Promoter Score)
+        ((Положительные комментарии - Негативные комментарии) / Всего комментариев) * 100%
+        """
+        # https://huggingface.co/blanchefort/rubert-base-cased-sentiment модель для анализа тональности
+        classifier = pipeline("sentiment-analysis", model="blanchefort/rubert-base-cased-sentiment") 
+
+        for i in self.data:
+            for item in i['vk']:
+                total_messages = [post['text'] for post in item['posts'] for post in post['replies'] if post['text'] is not None]
+                len_total_messages = len(total_messages)
+                
+                classified_messages = classifier(total_messages)
+                positive_count = sum(1 for i in classified_messages if i['label'] == 'POSITIVE')
+                negative_count = sum(1 for i in classified_messages if i['label'] == 'NEGATIVE')
+
+        if len_total_messages > 0:
+            net_promoter_score = ((positive_count - negative_count) / len_total_messages) * 100
+            return net_promoter_score
+        else:
+            return 0
+        
+    def character_length(self):
+        '''
+        Распределение тональности комментариев по длине символов
+        [количество символов | тональность]
+        '''
+        lists = []
+        results = []
+        
+        # https://huggingface.co/blanchefort/rubert-base-cased-sentiment модель для анализа тональности
+        classifier = pipeline("sentiment-analysis", model="blanchefort/rubert-base-cased-sentiment") 
+        
+        # диапазоны длин символов
+        dict_lengths = {1: '0-10', 2: '11-50', 3: '51-100', 4: '101-200', 5: '201+'}
+
+        comments_lengths = {
+            dict_lengths[1]: [],
+            dict_lengths[2]: [],
+            dict_lengths[3]: [],
+            dict_lengths[4]: [],
+            dict_lengths[5]: [] 
+        }
+
+        for group in self.data:
+            for post in group['vk'][0]['posts']:
+                for reply in post['replies']:
+                    if reply['text'] != None:
+                        comment_length = len(reply['text'])
+                        if comment_length < int(dict_lengths[1].split('-')[1])+1:
+                            comments_lengths[dict_lengths[1]].append(reply['text'])
+                        elif int(dict_lengths[1].split('-')[1])+1 <= comment_length <= int(dict_lengths[2].split('-')[1])+1:
+                            comments_lengths[dict_lengths[2]].append(reply['text'])
+                        elif int(dict_lengths[2].split('-')[1])+1 <= comment_length <= int(dict_lengths[3].split('-')[1])+1:
+                            comments_lengths[dict_lengths[3]].append(reply['text'])
+                        elif int(dict_lengths[3].split('-')[1])+1 <= comment_length <= int(dict_lengths[4].split('-')[1])+1:
+                            comments_lengths[dict_lengths[4]].append(reply['text'])
+                        else:
+                            comments_lengths[dict_lengths[5]].append(reply['text'])
+
+        for lengths in comments_lengths.keys():
+            lists.append([classifier(_) for _ in comments_lengths[lengths]])
+            
+        length_keys = dict_lengths.values()
+
+        for list in lists:
+            total_score = sum(dict['score'] for sublist in list for dict in sublist)
+
+            distribution = {'positive': 0, 'negative': 0, 'neutral': 0} 
+            if total_score != 0:
+                for sublist in list:
+                    for dict in sublist:
+                        distribution[dict['label'].lower()] += (dict['score'] / total_score) * 100
+
+            results.append(distribution)
+
+        comments_lengths_sentimentary = {}
+        for i, dist in zip(length_keys, results):
+            comments_lengths_sentimentary[i] = dist
+
+        return comments_lengths_sentimentary
+
+    def top_emoji(self):
+        '''
+        Топ-5 эмодзи
+        [эмодзи | количество упоминаний эмодзи в комментариях]
+        '''
+        def extract_emojis(text):
+            return ''.join(c for c in text if emoji.is_emoji(c))
+
+        emoji_counter = Counter()
+
+        for group in self.data:
+            for item in group['vk']:
+
+                messages = (reply['text'] for post in item['posts'] 
+                            for reply in post['replies'] if reply['text'] is not None)
+                
+                for message in messages:
+                    emojis = extract_emojis(message)
+                    emoji_counter.update(emojis)
+
+        top_emojis = dict(emoji_counter.most_common(5))       
+        return top_emojis  
+    
+
+class General():  
+    def __init__(self, data):
+        self.data = data
+      
+    def page_rank(sender_id, data, connections):
+        '''
+        Топ-10 авторов с наибольшей способностью вовлекать других пользователей в дискуссию
+        [пользователь | значение pagerank]
+        
+        sender_id - nodes (id) example [108718, 108719, 108720, 108721, ]
+        data - (id: {first_name: , last_name: }) example {108718: {'first_name': 'Richard', 'last_name': 'Lowe'}, }
+        connections - edges (one-to-one = id-to-id) example [(108990, 108928), (108916, 108760), ]
+        '''
+        G = nx.DiGraph()
+        [G.add_node(k, first_name = data[k]['first_name'], last_name = data[k]['last_name']) for k in sender_id]
+        G.add_edges_from(connections)
+        # spring_layout - https://networkx.org/documentation/stable/reference/generated/networkx.drawing.layout.spring_layout.html
+        pos = nx.spring_layout(G, k=0.15, iterations=20) 
+
+        # pagerank - https://networkx.org/documentation/stable/reference/algorithms/generated/networkx.algorithms.link_analysis.pagerank_alg.pagerank.html
+        pr = nx.pagerank(G)
+        sorted_pr = sorted(pr.items(), key=lambda x: x[1], reverse=True)
+
+        top_10 = sorted_pr[:10] 
+        top_10_ids = [id for id, pr in top_10]
+        # топ 10 пользователей с наибольшим pagerank
+        top_nodes = {node: G.nodes[node]['first_name'] + ' ' + G.nodes[node]['last_name'] for node in dict(top_10).keys()} 
+
+        # для графа
+        node_colors = ['#FF5558' if node in top_10_ids else "#27BBBD" for node in G.nodes()]
+        plt.figure(figsize = (10, 10)) 
+        nx.draw_networkx_labels(G, pos, 
+                                labels = top_nodes, 
+                                font_color = '#333335', 
+                                font_size = 10, 
+                                bbox = dict(facecolor='white', edgecolor='white', boxstyle='square'))
+        nx.draw(G, pos, 
+                nodelist = list(pr.keys()), 
+                node_size = [v * 100000 for v in pr.values()], 
+                with_labels = False, 
+                node_color = node_colors, 
+                edge_color = '#27BBBD', 
+                width = 0.2)
+        plt.show()
+
+        # для таблицы "Top 20 influencers by PageRank"
+        name_surname_dict = {data[k]['first_name'] + ' ' + data[k]['last_name']: round(v, 5) for k, v in top_10}
+        # print(name_surname_dict)
