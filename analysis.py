@@ -464,3 +464,48 @@ class General():
         # для таблицы "Top 20 influencers by PageRank"
         name_surname_dict = {data[k]['first_name'] + ' ' + data[k]['last_name']: round(v, 5) for k, v in top_10}
         # print(name_surname_dict)
+        
+    def betweenness_centrality_rank(sender_id, example_data, connections):
+        '''
+        Топ-10 авторов с наибольшей способностью связывать подсети других пользователей в графе
+        [пользователь | значение betweenness centrality rank]
+        
+        sender_id - узлы (id пользователей)
+        example_data - (словарь с id в качестве ключа и значений в качестве словаря из first_name и last_name)
+        connections - ребра (one-to-one = id-to-id)
+        '''
+        G = nx.DiGraph()
+        [G.add_node(k, first_name = example_data[k]['first_name'], last_name = example_data[k]['last_name']) for k in sender_id]
+        G.add_edges_from(connections)
+        # spring_layout - https://networkx.org/documentation/stable/reference/generated/networkx.drawing.layout.spring_layout.html
+        pos = nx.spring_layout(G, k=0.15, iterations=20)
+
+        # https://networkx.org/documentation/stable/reference/algorithms/generated/networkx.algorithms.centrality.betweenness_centrality.html
+        centrality = nx.betweenness_centrality(G)
+        sorted_centrality = sorted(centrality.items(), key=lambda x: x[1], reverse=True)
+
+        # топ 10 пользователей с наибольшим pagerank
+        top_10 = sorted_centrality[:10] 
+        top_10_ids = [id for id, _ in top_10]
+        top_nodes = {node: G.nodes[node]['first_name'] + ' ' + G.nodes[node]['last_name'] for node in dict(top_10).keys()} 
+
+        # для графа
+        node_colors = ['#FF5558' if node in top_10_ids else '#27BBBD' for node in G.nodes()]
+        plt.figure(figsize = (10, 10)) 
+        nx.draw_networkx_labels(G, pos, 
+                                labels = top_nodes, 
+                                font_color = '#333335', 
+                                font_size = 10, 
+                                bbox = dict(facecolor='white', edgecolor='white', boxstyle='square'))
+        nx.draw(G, pos, 
+                nodelist = list(centrality.keys()), 
+                node_size = [v * 300000 for v in centrality.values()], 
+                with_labels = False, 
+                node_color = node_colors, 
+                edge_color = '#27BBBD', 
+                width = 0.2)
+        plt.show()
+
+        # для таблицы "Top 20 influencers by Betweenness Centrality Rank"
+        name_surname_dict = {example_data[k]['first_name'] + ' ' + example_data[k]['last_name']: round(v, 5) for k, v in top_10}
+        # print(name_surname_dict)
