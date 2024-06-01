@@ -55,6 +55,33 @@ class Telegram:
         else:
             return 0
         
+    def engagement_rate_by_reach(self):
+        '''
+        Коэффициент вовлеченности (Engagement Rate By Reach)
+        (Общее число взаимодействий / Общее количество уникальных просмотров) * 100%
+        '''
+        total_interactions = 0
+        total_comments = 0
+        total_views = 0
+
+        for i in self.data:
+            for item in i['tg']:
+                total_views += sum([0 if _["views"] is None else _["views"] for _ in item["posts"]])
+                
+                likes = sum(reaction['count'] for post in item['posts'] for reaction in post['reactions'])
+                reposts = sum(post.get('forwards', 0) for post in item['posts'])  
+
+                unique_sender_ids = set(comment['sender_id'] for post in item['posts'] for comment in post.get('replies', []))
+
+                total_comments += len(unique_sender_ids)
+                total_interactions += likes + total_comments + reposts
+
+        if total_interactions > 0 and total_views > 0:
+            engagement_rate_by_reach = (total_interactions / total_views) * 100
+            return engagement_rate_by_reach
+        else:
+            return 0
+        
     def top_regions(self):
         '''
         Топ-20 регионов с наибольшим числом пользователей
