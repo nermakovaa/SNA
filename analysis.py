@@ -654,7 +654,7 @@ class BetweennessCentralityRank:
 
         return sender_id, sender_info, connections
 
-    def page_rank(self):
+    def betweenness_centrality(self):
         '''
         Для получения топа пользователей betweenness_centrality_rank {722219350: 0.04746, 732871646: 0.03822 ...}
         '''
@@ -715,10 +715,10 @@ class BetweennessCentralityRank:
         Данные для таблицы топ-инфлюенсеров BetweennessCentralityRank
         '''
         result_dict = {}
-        for k, v in self.page_rank().items():
+        for k, v in self.betweenness_centrality().items():
             name = self.sender_info[k]['first_name'] + ' ' + self.sender_info[k]['last_name']
             result_dict[name] = {
-                'page_rank': self.page_rank()[k],
+                'betweenness_centrality': self.betweenness_centrality()[k],
                 'id': k
             }
 
@@ -769,7 +769,7 @@ class BetweennessCentralityRank:
                 del result_dict[key]['comments']
         
         return result_dict # {'Татьяна Балакирева': {'page_rank': 0.07433, 'id': 588079193,  'engagement_users': 81,  'positive': 73.33333333333333,  'negative': 8.88888888888889,  'neutral': 17.77777777777778},
-            
+    
         
 class InfluencerTable:
     '''
