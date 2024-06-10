@@ -361,24 +361,26 @@ class Model:
         else:
             return 0
         
-    def calculate_model(self):
+    def calculate_model(self, weight=tuple((100 / 11) for _ in range(11))):
         '''
         Итоговые значения
+        weight - кортеж из весов (по умолчанию все метрики равнозначны)
         '''
         name_groups = ['Показатели вовлеченности аудитории', 'Метрики для оценивания обратной связи аудитории',
-                       'Метрики эффективности коммуникаций бренда', 'Метрики для оценивания взаимодействия с инфлюенсерами',
-                       'Метрики информационного присутствия бренда']
-        groups = [
-            [self.brand_follower_ratio, self.user_engagement_ratio, self.top_audience_ratio], # Показатели вовлеченности аудитории
-            [self.love_rate, self.trending_content_sentiment_ratio, self.net_promoter_score], # Метрики для оценивания обратной связи аудитории
-            [self.brand_response_to_comments, self.brand_reaction_to_negativity, self.brand_responsiveness], # Метрики эффективности коммуникаций бренда
-            [self.influencer_sentiment_ratio], # Метрики для оценивания взаимодействия с инфлюенсерам
-            [self.channel_citation_index] # Метрики информационного присутствия бренда
-        ]
-
-        group_sums = [sum(metric() for metric in group) for group in groups]
-        average = sum(group_sums) / 11
-
-        min_index = group_sums.index(min(group_sums))
-
-        return average, name_groups[min_index] # average - итоговый рейтинг, название группы слабой группы 
+            'Метрики эффективности коммуникаций бренда', 'Метрики для оценивания взаимодействия с инфлюенсерами',
+            'Метрики информационного присутствия бренда']
+        
+        indicators = (self.brand_follower_ratio(), self.user_engagement_ratio(), self.top_audience_ratio(), self.love_rate(),
+                    self.trending_content_sentiment_ratio(), self.net_promoter_score(), self.brand_response_to_comments(), 
+                    self.brand_reaction_to_negativity(), self.brand_responsiveness(), self.influencer_sentiment_ratio(), self.channel_citation_index())
+        
+        # при подсчете рейтинга веса получаем от клиента
+        result = [w * v for w, v in zip(weight, indicators)] 
+        result_model = sum(result)
+        
+        # в рекомендациях веса не меняем
+        result_min = [w * v for w, v in zip(tuple((100 / 11) for _ in range(11)), indicators)] 
+        group = [sum(result_min[:3])/3, sum(result_min[3:6])/3, sum(result_min[6:9])/3, result_min[9], result_min[10]]
+        min_group = group.index(min(group))
+        
+        return result_model, name_groups[min_group] # result_model - итоговый рейтинг, (name_groups[min_group]) - название слабой группы 
