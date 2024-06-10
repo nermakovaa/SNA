@@ -538,3 +538,202 @@ class General():
         name_surname_dict = {example_data[k]['first_name'] + ' ' + example_data[k]['last_name']: round(v, 5) for k, v in top_10}
         return name_surname_dict
         # print(name_surname_dict)
+        
+        
+class InfluencerTable:
+    '''
+    Топ-5 авторов с наибольшим числом сообщений
+    [пользователь | постов в группе | вовлеченность | лояльность]
+    '''
+    def __init__(self, data, person=5):
+        self.data = data
+        self.person = person
+        
+    def __get_data(self):
+        dt = {}  
+
+        for post in self.data['vk'][0]['posts']:
+            if post['from'] is not None:
+                post_id = post['from']['id']
+                if post_id not in dt:
+                    dt[post_id] = {
+                        'first_name': post['from']['first_name'],
+                        'last_name': post['from']['last_name'],
+                        'likes': post['reactions'][0]['count'],
+                        'messages': 1,
+                        'comments': [reply['text'] for reply in post['replies']],
+                        'reposts': post['forwards'],
+                        'followers': self.data['vk'][0]['membersCount']
+                    }
+                else:  
+                    dt[post_id]['messages'] += 1
+                    dt[post_id]['likes'] += post['reactions'][0]['count']
+                    dt[post_id]['reposts'] += post['forwards']
+                    dt[post_id]['comments'].extend([reply['text'] for reply in post['replies']])
+                
+        return dt
+            
+    def get_name(self):
+        '''
+        ФИО пользователей с наибольшим числом инициированных постов
+        '''
+        self.data = self.__get_data()
+        sorted_data = sorted(self.data.values(), key=lambda x: x['messages'], reverse=True)
+        authors_names = {v['first_name'] + ' ' + v['last_name']: v['messages'] for v in sorted_data[:self.person]}
+        return authors_names # словарь {'first_name last_name': messages}, где messages - количество постов, инициированных данным пользователем
+    
+    def engagement_rate_by_reach(self):
+        '''
+        Коэффициент вовлеченности (Engagement Rate By Reach)
+        (Общее число взаимодействий / Общее количество подписчиков сообщества) * 100%
+        '''
+        sorted_data = sorted(self.data.values(), key=lambda x: x['messages'], reverse=True)
+
+        engagement_rates = {
+            v['first_name'] + ' ' + v['last_name']: round(((v['likes'] + v['reposts'] + len(v['comments'])) / v['followers']) * 1000, 3) 
+            for v in sorted_data[:self.person] if v['followers'] != 0
+        }
+        return engagement_rates # словарь {'first_name last_name': engagement_rate_by_reach}, engagement_rate_by_reach - вовлеченность
+    
+    def net_promoter_score(self):
+        """
+        Лояльность пользователей (Net Promoter Score)
+        ((Положительные комментарии - Негативные комментарии) / Всего комментариев) * 100%
+        """
+        classifier = pipeline("sentiment-analysis", model="blanchefort/rubert-base-cased-sentiment") 
+        
+        top_users = sorted(self.data.values(), key=lambda x: x['messages'], reverse=True)[:self.person]
+        loyalty_scores = []
+        
+        for user in top_users:
+            positive_count = 0
+            negative_count = 0
+            
+            for comment in user['comments']:
+                classified_comment = classifier(comment)
+                if classified_comment[0]['label'] == 'POSITIVE':
+                    positive_count += 1
+                elif classified_comment[0]['label'] == 'NEGATIVE':
+                    negative_count += 1
+            
+            total_comments = len(user['comments'])
+            if total_comments > 0:
+                loyalty_score = ((positive_count - negative_count) / total_comments) * 100
+                loyalty_scores.append((user['first_name'] + ' ' + user['last_name'], round(loyalty_score, 2)))
+        
+        return sorted(loyalty_scores, key=lambda x: x[1], reverse=True) # словарь {'first_name last_name': net_promoter_score}, net_promoter_score - лояльность
+
+    def influencer_table_result(self):
+        '''
+        Топ-5 авторов с наибольшим числом сообщений
+        '''
+        data_dict = {}
+        
+        names = self.get_name()
+        engagement_rate = self.engagement_rate_by_reach()
+        nps = self.net_promoter_score()
+        
+        nps_dict = {name: rating for name, rating in nps}
+        
+        for name, messages in names.items():
+            data_dict[name] = {
+                'get_message': messages,
+                'engagement_rate_by_reach': engagement_rate.get(name, 0),
+                'net_promoter_score': nps_dict.get(name, 0)
+            }
+        
+        return data_dict # {'Галина Погорельченко': {'get_message': 10,  'engagement_rate_by_reach': 4.31,  'net_promoter_score': 65.0}, 'Евгения Санникова': ...}
+    
+        
+class InfluencerTableNegative:
+    '''
+    Топ-10 постов с высоким уровнем негативной реакции аудитории
+    [пост | инфлюенсер | негатив | нейтрально | позитив | вовлеченность]
+    '''
+    def __init__(self, data, top_neg_posts=10):
+        self.data = data
+        self.top_neg_posts = top_neg_posts
+        self.__analyze_comments()
+        self.__engagement_rate_by_reach()
+
+    def __get_data(self):
+        dt = {}  
+
+        for post in self.data['vk'][0]['posts']:
+            if post['from'] is not None:
+                post_id = post['id']
+                if post_id not in dt:
+                    dt[post_id] = {
+                        'first_name': post['from']['first_name'],
+                        'last_name': post['from']['last_name'],
+                        'likes': post['reactions'][0]['count'],
+                        'messages': 1,
+                        'comments': [reply['text'] for reply in post['replies']],
+                        'reposts': post['forwards'],
+                        'followers': self.data['vk'][0]['membersCount'],
+                        'post': post['text']
+                    }
+                    
+        return dt
+
+    def __analyze_comments(self):
+        self.data = self.__get_data()
+        
+        classifier = pipeline("sentiment-analysis", model="blanchefort/rubert-base-cased-sentiment")
+        
+        for id, info in self.data.items():
+            pos_count = 0
+            neg_count = 0
+            neu_count = 0
+            total_count = 0
+            
+            for comment in info['comments']:
+                result = classifier(comment)
+                sentiment = result[0]['label']
+                
+                if sentiment == 'NEGATIVE':
+                    neg_count += 1
+                elif sentiment == 'POSITIVE':
+                    pos_count += 1
+                else:
+                    neu_count += 1
+                
+                total_count += 1
+
+            pos_perc = (pos_count / total_count) * 100
+            neg_perc = (neg_count / total_count) * 100
+            neu_perc = (neu_count / total_count) * 100
+
+            info['positive_percentage'] = pos_perc
+            info['negative_percentage'] = neg_perc
+            info['neutral_percentage'] = neu_perc
+
+        sorted_data = sorted(self.data.items(), key=lambda x: x[1]['negative_percentage'], reverse=True)
+        self.neg_posts = sorted_data[:self.top_neg_posts]
+    
+    def __engagement_rate_by_reach(self):
+        '''
+        Коэффициент вовлеченности (Engagement Rate By Reach)
+        (Общее число взаимодействий / Общее количество подписчиков сообщества) * 100%
+        '''
+        for id, info in self.neg_posts:
+            total_interactions = info['likes'] + len(info['comments']) + info['reposts']
+            engagement_rate = (total_interactions / info['followers']) * 100
+            info['engagement_rate'] = engagement_rate
+    
+    def get_results_dict(self):
+        
+        results_dict = {}
+        
+        for id, info in self.neg_posts:
+            results_dict[info['post']] = {
+                'first_name': info['first_name'] + ' ' + info['last_name'],
+                'negative': info['negative_percentage'],
+                'neutral': info['neutral_percentage'],
+                'positive': info['positive_percentage'],
+                'engagement_rate': info['engagement_rate']
+            }
+        
+        # # {'Друзья, будьте осторожны...',  {'first_name': 'Наталия Милано', 'negative': 100.0,  
+        # 'neutral': 0.0,  'positive': 0.0,  'engagement_rate': 0.01790601898038012}, 'Вот такие стрипсы, одни обрезки': {'first...   
+        return results_dict 
