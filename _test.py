@@ -1,21 +1,22 @@
 import pytest
 import json
-from analysis import Telegram, Vkontakte, General
+from analysis import PageRank, BetweennessCentralityRank, InfluencerTable, InfluencerTableNegative, Telegram, Vkontakte
 from model import Model
-from faker import Faker
-import random
+import os
 
 
 @pytest.fixture
 def test_data():
-    with open('/home/nermakovaa/semester_4/SNA/SNA/data/data.json', 'r') as file:
+    file_path = os.path.join(os.getcwd(), 'data/data.json') 
+    with open(file_path, 'r') as file:
         file_content = file.read()
     return json.loads(file_content)
 
 
 @pytest.fixture
 def test_text():
-    with open('/home/nermakovaa/semester_4/SNA/SNA/data/text.txt', 'r') as file:
+    file_path = os.path.join(os.getcwd(), 'data/new_data.txt')  
+    with open(file_path, 'r') as file:
         file_content = file.read()
     return json.loads(file_content)
     
@@ -88,43 +89,64 @@ class TestVkontakte:
     def test_top_emoji(self, vkontakte_instance):
         top_emoji = vkontakte_instance.top_emoji()
         assert len(top_emoji.keys()) == 5
-        
-
-@pytest.fixture
-def prepare_data():
-    sender_id = list(range(108718, 108818)) 
-    connections = [(random.choice(sender_id), random.choice(sender_id)) for _ in range(len(sender_id))] 
-
-    fake = Faker()
-
-    example_data = {}
-    for id in sender_id:
-        example_data[id] = {"first_name": fake.first_name(), "last_name": fake.last_name()}
-
-    return sender_id, example_data, connections
 
 
-class TestGeneral:
+class TestPageRank:
     '''
-    Проверка ожидаемого значения для класса General
+    Проверка ожидаемого значения для класса PageRank
     '''
     @pytest.fixture
-    def general_instance(self, prepare_data):
-        return General(prepare_data)
+    def page_rank(self, test_text):
+        test = PageRank(test_text)
+        return test
     
-    def test_page_rank(self, general_instance, prepare_data):
-        sender_id, example_data, connections = prepare_data
-        
-        result_dict = general_instance.page_rank(sender_id, example_data, connections)
+    def test_get_table(self, page_rank):
+        result_dict = page_rank.get_table()
         assert result_dict != {}
 
-    def test_betweenness_centrality_rank_not_empty(self, general_instance, prepare_data):
-        sender_id, example_data, connections = prepare_data
 
-        result_dict = general_instance.betweenness_centrality_rank(sender_id, example_data, connections)
+class TestBetweennessCentralityRank:
+    '''
+    Проверка ожидаемого значения для класса BetweennessCentralityRank
+    '''
+    @pytest.fixture
+    def betweenness_centralityRank(self, test_text):
+        test = BetweennessCentralityRank(test_text)
+        return test
+    
+    def test_get_table(self, betweenness_centralityRank):
+        result_dict = betweenness_centralityRank.get_table()
+        assert result_dict != {}
+
+
+class TestInfluencerTable:
+    '''
+    Проверка ожидаемого значения для класса InfluencerTable
+    '''
+    @pytest.fixture
+    def influencer_table(self, test_text):
+        test = InfluencerTable(test_text)
+        return test
+    
+    def test_influencer_table_result(self, influencer_table):
+        result_dict = influencer_table.influencer_table_result()
         assert result_dict != {}
         
- 
+
+class TestInfluencerTableNegative:
+    '''
+    Проверка ожидаемого значения для класса InfluencerTableNegative
+    '''
+    @pytest.fixture
+    def influencer_table_negative(self, test_text):
+        test = InfluencerTableNegative(test_text)
+        return test
+    
+    def test_get_results_dict(self, influencer_table_negative):
+        result_dict = influencer_table_negative.get_results_dict()
+        assert result_dict != {}
+    
+        
 class TestModel:
     '''
     Граничные тесты для класса Model
@@ -132,27 +154,31 @@ class TestModel:
     @pytest.fixture
     def model_instance(self, test_text):
         return Model(test_text)
-        
-    def test_user_engagement_ratio(self, model_instance):
-        user_engagement_ratio = model_instance.user_engagement_ratio()
-        assert 0 <= user_engagement_ratio <= 1
-
-    def test_love_rate(self, model_instance):
-        love_rate = model_instance.love_rate()
-        assert 0 <= love_rate <= 1 
-        
-    def test_trending_content_sentiment_ratio(self, model_instance):
-        trending_content_sentiment_ratio = model_instance.trending_content_sentiment_ratio()
-        assert 0 <= trending_content_sentiment_ratio <= 1
-        
-    def test_net_promoter_score(self, model_instance):
-        net_promoter_score = model_instance.net_promoter_score()
-        assert 0 <= net_promoter_score <= 1
-        
-    def test_brand_responsiveness(self, model_instance):
-        brand_responsiveness = model_instance.brand_responsiveness()
-        assert 0 <= brand_responsiveness <= 1
     
-    def test_channel_citation_index(self, model_instance):
-        channel_citation_index = model_instance.channel_citation_index()
-        assert 0 <= channel_citation_index <= 1
+    @pytest.mark.parametrize("method_name", ["brand_follower_ratio", "user_engagement_ratio", "top_audience_ratio", "love_rate", "trending_content_sentiment_ratio", "net_promoter_score", "brand_response_to_comments", "brand_reaction_to_negativity", "brand_responsiveness", "influencer_sentiment_ratio", "channel_citation_index"])
+    def test_metrics(self, model_instance, method_name):
+        '''
+        Модульное тестирование
+        '''
+        metric_value = getattr(model_instance, method_name)()
+        
+        assert isinstance(metric_value, (int, float)) 
+        assert 0 <= metric_value <= 1
+    
+    @pytest.mark.parametrize("weight", [tuple((100 / 11) for _ in range(11)),
+                                      tuple((10.0, 10.0, 10.0, 10.0, 10.0, 10.0, 10.0, 10.0, 10.0, 10.0, 0.0)), 
+                                      tuple((11.11, 0.0, 11.11, 11.11, 0.0, 11.11, 11.11, 11.11, 11.11, 11.11, 11.11)),
+                                      tuple((12.5, 12.5, 0.0, 12.5, 0.0, 0.0, 12.5, 12.5, 12.5, 12.5, 12.5)),
+                                      tuple((25.0, 0.0, 25.0, 25.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 25.0))])
+    def test_calculate_model_weight(self, model_instance, weight):
+        '''
+        Интеграционное тестирование
+        '''
+        calculate_model, name_model = model_instance.calculate_model(weight)
+        
+        assert isinstance(calculate_model, (int, float)) 
+        assert 0 <= calculate_model <= 100
+        
+        assert name_model in ('Показатели вовлеченности аудитории', 'Метрики для оценивания обратной связи аудитории',
+                            'Метрики эффективности коммуникаций бренда', 'Метрики для оценивания взаимодействия с инфлюенсерами',
+                            'Метрики информационного присутствия бренда')
